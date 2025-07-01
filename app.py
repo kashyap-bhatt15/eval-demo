@@ -165,11 +165,8 @@ def evaluate_llm_responses(
 
         evaluator = LLMEvaluator()
 
-        from fastapi.testclient import TestClient
-
-        client = TestClient(app)
-
-        results = evaluator.run_evaluation(test_cases, client)
+        base_url = "http://localhost:8000"
+        results = evaluator.run_evaluation(test_cases, base_url)
 
         return {"status": "success", "total_tests": len(test_cases), "results": results}
 

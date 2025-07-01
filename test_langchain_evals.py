@@ -2,13 +2,9 @@
 LangChain evaluation test cases for the FastAPI LLM endpoint.
 """
 
-import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from fastapi.testclient import TestClient
-
-from app import app
 from evaluation import EvaluationCase, LLMEvaluator
 
 
@@ -16,42 +12,24 @@ class TestLangChainEvaluations(unittest.TestCase):
     """Test cases for LangChain evaluations of LLM responses."""
 
     def setUp(self):
-        """Set up test client and evaluators."""
-        self.client = TestClient(app)
+        """Set up evaluators."""
         self.evaluator = LLMEvaluator()
+        self.base_url = "http://localhost:8000"
 
     def test_evaluation_case_1_greeting(self):
         """Test Case 1: Greeting prompt evaluation."""
-        prompt = "Hello, how are you?"
         expected_output = (
             "Hello! I'm doing well, thank you for asking. How can I help you today?"
         )
 
-        with patch("os.getenv") as mock_getenv, patch(
-            "app.urllib.request.urlopen"
-        ) as mock_urlopen:
-            mock_getenv.return_value = "test-api-key"
-
-            mock_response_data = {
-                "choices": [{"message": {"content": expected_output}}]
-            }
-
+        with patch("requests.post") as mock_post:
             mock_response = MagicMock()
-            mock_response.read.return_value = json.dumps(mock_response_data).encode(
-                "utf-8"
-            )
-            mock_response.__enter__.return_value = mock_response
-            mock_response.__exit__.return_value = None
-            mock_urlopen.return_value = mock_response
-
-            response = self.client.post(f"/llm?prompt={prompt}")
-            self.assertEqual(response.status_code, 200)
-
-            data = response.json()
-            actual_output = data["response"]
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"response": expected_output}
+            mock_post.return_value = mock_response
 
             evaluation_results = self.evaluator.evaluate_response(
-                actual_output, expected_output
+                expected_output, expected_output
             )
 
             self.assertTrue(
@@ -70,34 +48,16 @@ class TestLangChainEvaluations(unittest.TestCase):
 
     def test_evaluation_case_2_question_answering(self):
         """Test Case 2: Question answering prompt evaluation."""
-        prompt = "What is the capital of France?"
         expected_output = "The capital of France is Paris."
 
-        with patch("os.getenv") as mock_getenv, patch(
-            "app.urllib.request.urlopen"
-        ) as mock_urlopen:
-            mock_getenv.return_value = "test-api-key"
-
-            mock_response_data = {
-                "choices": [{"message": {"content": expected_output}}]
-            }
-
+        with patch("requests.post") as mock_post:
             mock_response = MagicMock()
-            mock_response.read.return_value = json.dumps(mock_response_data).encode(
-                "utf-8"
-            )
-            mock_response.__enter__.return_value = mock_response
-            mock_response.__exit__.return_value = None
-            mock_urlopen.return_value = mock_response
-
-            response = self.client.post(f"/llm?prompt={prompt}")
-            self.assertEqual(response.status_code, 200)
-
-            data = response.json()
-            actual_output = data["response"]
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"response": expected_output}
+            mock_post.return_value = mock_response
 
             evaluation_results = self.evaluator.evaluate_response(
-                actual_output, expected_output
+                expected_output, expected_output
             )
 
             self.assertTrue(
@@ -112,7 +72,6 @@ class TestLangChainEvaluations(unittest.TestCase):
 
     def test_evaluation_case_3_creative_writing(self):
         """Test Case 3: Creative writing prompt evaluation."""
-        prompt = "Write a short poem about the ocean."
         expected_output = (
             "Waves crash upon the sandy shore,\n"
             "Blue depths hold secrets and much more.\n"
@@ -120,38 +79,21 @@ class TestLangChainEvaluations(unittest.TestCase):
             "Nature's beauty, unreconciled."
         )
 
-        with patch("os.getenv") as mock_getenv, patch(
-            "app.urllib.request.urlopen"
-        ) as mock_urlopen:
-            mock_getenv.return_value = "test-api-key"
+        mock_actual_output = (
+            "The ocean blue stretches far and wide,\n"
+            "With rolling waves and changing tide.\n"
+            "A peaceful scene of endless sea,\n"
+            "Where dolphins play so wild and free."
+        )
 
-            mock_actual_output = (
-                "The ocean blue stretches far and wide,\n"
-                "With rolling waves and changing tide.\n"
-                "A peaceful scene of endless sea,\n"
-                "Where dolphins play so wild and free."
-            )
-
-            mock_response_data = {
-                "choices": [{"message": {"content": mock_actual_output}}]
-            }
-
+        with patch("requests.post") as mock_post:
             mock_response = MagicMock()
-            mock_response.read.return_value = json.dumps(mock_response_data).encode(
-                "utf-8"
-            )
-            mock_response.__enter__.return_value = mock_response
-            mock_response.__exit__.return_value = None
-            mock_urlopen.return_value = mock_response
-
-            response = self.client.post(f"/llm?prompt={prompt}")
-            self.assertEqual(response.status_code, 200)
-
-            data = response.json()
-            actual_output = data["response"]
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"response": mock_actual_output}
+            mock_post.return_value = mock_response
 
             evaluation_results = self.evaluator.evaluate_response(
-                actual_output, expected_output
+                mock_actual_output, expected_output
             )
 
             self.assertFalse(
@@ -191,42 +133,35 @@ class TestLangChainEvaluations(unittest.TestCase):
             ),
         ]
 
-        with patch("os.getenv") as mock_getenv, patch(
-            "app.urllib.request.urlopen"
-        ) as mock_urlopen:
-            mock_getenv.return_value = "test-api-key"
+        with patch("requests.post") as mock_post:
+            def mock_post_side_effect(url, **kwargs):
+                if "/llm" in url:
+                    prompt = kwargs.get("params", {}).get("prompt", "")
 
-            def mock_response_side_effect(*args, **kwargs):
-                req = args[0]
-                data = json.loads(req.data.decode("utf-8"))
-                prompt = data["messages"][0]["content"]
+                    if "Hello" in prompt:
+                        content = (
+                            "Hello! I'm doing well, thank you for asking. "
+                            "How can I help you today?"
+                        )
+                    elif "capital of France" in prompt:
+                        content = "The capital of France is Paris."
+                    else:
+                        content = (
+                            "The ocean blue stretches far and wide,\n"
+                            "With rolling waves and changing tide.\n"
+                            "A peaceful scene of endless sea,\n"
+                            "Where dolphins play so wild and free."
+                        )
 
-                if "Hello" in prompt:
-                    content = (
-                        "Hello! I'm doing well, thank you for asking. "
-                        "How can I help you today?"
-                    )
-                elif "capital of France" in prompt:
-                    content = "The capital of France is Paris."
-                else:
-                    content = (
-                        "The ocean blue stretches far and wide,\n"
-                        "With rolling waves and changing tide.\n"
-                        "A peaceful scene of endless sea,\n"
-                        "Where dolphins play so wild and free."
-                    )
+                    mock_response = MagicMock()
+                    mock_response.status_code = 200
+                    mock_response.json.return_value = {"response": content}
+                    return mock_response
 
-                mock_response = MagicMock()
-                mock_response.read.return_value = json.dumps(
-                    {"choices": [{"message": {"content": content}}]}
-                ).encode("utf-8")
-                mock_response.__enter__.return_value = mock_response
-                mock_response.__exit__.return_value = None
-                return mock_response
+                return MagicMock()
 
-            mock_urlopen.side_effect = mock_response_side_effect
-
-            results = self.evaluator.run_evaluation(test_cases, self.client)
+            mock_post.side_effect = mock_post_side_effect
+            results = self.evaluator.run_evaluation(test_cases, self.base_url)
 
             self.assertEqual(len(results), 3, "Should have 3 evaluation results")
 

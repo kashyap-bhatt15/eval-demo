@@ -4,6 +4,7 @@ LangChain evaluation module for testing LLM responses.
 
 from typing import Any, Dict, List
 
+import requests
 from fastapi import HTTPException
 from langchain.evaluation import EvaluatorType, load_evaluator
 from pydantic import BaseModel
@@ -58,14 +59,14 @@ class LLMEvaluator:
             raise HTTPException(status_code=500, detail=f"Evaluation error: {str(e)}")
 
     def run_evaluation(
-        self, test_cases: List[EvaluationCase], llm_client
+        self, test_cases: List[EvaluationCase], base_url: str = "http://localhost:8000"
     ) -> List[Dict[str, Any]]:
         """
-        Run evaluation on multiple test cases.
+        Run evaluation on multiple test cases using actual HTTP requests.
 
         Args:
             test_cases: List of evaluation test cases
-            llm_client: FastAPI test client for making LLM calls
+            base_url: Base URL for the API server
 
         Returns:
             List of evaluation results
@@ -74,7 +75,11 @@ class LLMEvaluator:
 
         for case in test_cases:
             try:
-                response = llm_client.post(f"/llm?prompt={case.prompt}")
+                response = requests.post(
+                    f"{base_url}/llm",
+                    params={"prompt": case.prompt},
+                    timeout=30
+                )
 
                 if response.status_code != 200:
                     results.append(
@@ -120,6 +125,17 @@ class LLMEvaluator:
                     }
                 )
 
+            except requests.exceptions.RequestException as e:
+                results.append(
+                    {
+                        "test_name": case.test_name,
+                        "prompt": case.prompt,
+                        "expected_output": case.expected_output,
+                        "actual_output": None,
+                        "error": f"HTTP request failed: {str(e)}",
+                        "evaluation_results": None,
+                    }
+                )
             except Exception as e:
                 results.append(
                     {
