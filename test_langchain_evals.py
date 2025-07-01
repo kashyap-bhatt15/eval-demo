@@ -1,0 +1,249 @@
+"""
+LangChain evaluation test cases for the FastAPI LLM endpoint.
+"""
+
+import json
+import unittest
+from unittest.mock import MagicMock, patch
+
+from fastapi.testclient import TestClient
+
+from app import app
+from evaluation import EvaluationCase, LLMEvaluator
+
+
+class TestLangChainEvaluations(unittest.TestCase):
+    """Test cases for LangChain evaluations of LLM responses."""
+
+    def setUp(self):
+        """Set up test client and evaluators."""
+        self.client = TestClient(app)
+        self.evaluator = LLMEvaluator()
+
+    def test_evaluation_case_1_greeting(self):
+        """Test Case 1: Greeting prompt evaluation."""
+        prompt = "Hello, how are you?"
+        expected_output = (
+            "Hello! I'm doing well, thank you for asking. How can I help you today?"
+        )
+
+        with patch("os.getenv") as mock_getenv, patch(
+            "app.urllib.request.urlopen"
+        ) as mock_urlopen:
+            mock_getenv.return_value = "test-api-key"
+
+            mock_response_data = {
+                "choices": [{"message": {"content": expected_output}}]
+            }
+
+            mock_response = MagicMock()
+            mock_response.read.return_value = json.dumps(mock_response_data).encode(
+                "utf-8"
+            )
+            mock_response.__enter__.return_value = mock_response
+            mock_response.__exit__.return_value = None
+            mock_urlopen.return_value = mock_response
+
+            response = self.client.post(f"/llm?prompt={prompt}")
+            self.assertEqual(response.status_code, 200)
+
+            data = response.json()
+            actual_output = data["response"]
+
+            evaluation_results = self.evaluator.evaluate_response(
+                actual_output, expected_output
+            )
+
+            self.assertTrue(
+                evaluation_results["exact_match"], "Exact match should be true"
+            )
+            self.assertEqual(
+                evaluation_results["exact_match_score"],
+                1.0,
+                "Exact match score should be 1.0",
+            )
+            self.assertLessEqual(
+                evaluation_results["string_distance_score"],
+                0.1,
+                "String distance should be very low",
+            )
+
+    def test_evaluation_case_2_question_answering(self):
+        """Test Case 2: Question answering prompt evaluation."""
+        prompt = "What is the capital of France?"
+        expected_output = "The capital of France is Paris."
+
+        with patch("os.getenv") as mock_getenv, patch(
+            "app.urllib.request.urlopen"
+        ) as mock_urlopen:
+            mock_getenv.return_value = "test-api-key"
+
+            mock_response_data = {
+                "choices": [{"message": {"content": expected_output}}]
+            }
+
+            mock_response = MagicMock()
+            mock_response.read.return_value = json.dumps(mock_response_data).encode(
+                "utf-8"
+            )
+            mock_response.__enter__.return_value = mock_response
+            mock_response.__exit__.return_value = None
+            mock_urlopen.return_value = mock_response
+
+            response = self.client.post(f"/llm?prompt={prompt}")
+            self.assertEqual(response.status_code, 200)
+
+            data = response.json()
+            actual_output = data["response"]
+
+            evaluation_results = self.evaluator.evaluate_response(
+                actual_output, expected_output
+            )
+
+            self.assertTrue(
+                evaluation_results["exact_match"],
+                "Exact match should be true for factual answer",
+            )
+            self.assertEqual(
+                evaluation_results["exact_match_score"],
+                1.0,
+                "Exact match score should be 1.0",
+            )
+
+    def test_evaluation_case_3_creative_writing(self):
+        """Test Case 3: Creative writing prompt evaluation."""
+        prompt = "Write a short poem about the ocean."
+        expected_output = (
+            "Waves crash upon the sandy shore,\n"
+            "Blue depths hold secrets and much more.\n"
+            "The ocean vast, both calm and wild,\n"
+            "Nature's beauty, unreconciled."
+        )
+
+        with patch("os.getenv") as mock_getenv, patch(
+            "app.urllib.request.urlopen"
+        ) as mock_urlopen:
+            mock_getenv.return_value = "test-api-key"
+
+            mock_actual_output = (
+                "The ocean blue stretches far and wide,\n"
+                "With rolling waves and changing tide.\n"
+                "A peaceful scene of endless sea,\n"
+                "Where dolphins play so wild and free."
+            )
+
+            mock_response_data = {
+                "choices": [{"message": {"content": mock_actual_output}}]
+            }
+
+            mock_response = MagicMock()
+            mock_response.read.return_value = json.dumps(mock_response_data).encode(
+                "utf-8"
+            )
+            mock_response.__enter__.return_value = mock_response
+            mock_response.__exit__.return_value = None
+            mock_urlopen.return_value = mock_response
+
+            response = self.client.post(f"/llm?prompt={prompt}")
+            self.assertEqual(response.status_code, 200)
+
+            data = response.json()
+            actual_output = data["response"]
+
+            evaluation_results = self.evaluator.evaluate_response(
+                actual_output, expected_output
+            )
+
+            self.assertFalse(
+                evaluation_results["exact_match"],
+                "Creative writing should not match exactly",
+            )
+            self.assertIsNotNone(
+                evaluation_results["string_distance_score"],
+                "String distance should be calculated",
+            )
+
+    def test_evaluation_batch_processing(self):
+        """Test batch evaluation of multiple test cases."""
+        test_cases = [
+            EvaluationCase(
+                prompt="Hello, how are you?",
+                expected_output=(
+                    "Hello! I'm doing well, thank you for asking. "
+                    "How can I help you today?"
+                ),
+                test_name="greeting",
+            ),
+            EvaluationCase(
+                prompt="What is the capital of France?",
+                expected_output="The capital of France is Paris.",
+                test_name="factual_qa",
+            ),
+            EvaluationCase(
+                prompt="Write a short poem about the ocean.",
+                expected_output=(
+                    "Waves crash upon the sandy shore,\n"
+                    "Blue depths hold secrets and much more.\n"
+                    "The ocean vast, both calm and wild,\n"
+                    "Nature's beauty, unreconciled."
+                ),
+                test_name="creative_writing",
+            ),
+        ]
+
+        with patch("os.getenv") as mock_getenv, patch(
+            "app.urllib.request.urlopen"
+        ) as mock_urlopen:
+            mock_getenv.return_value = "test-api-key"
+
+            def mock_response_side_effect(*args, **kwargs):
+                req = args[0]
+                data = json.loads(req.data.decode("utf-8"))
+                prompt = data["messages"][0]["content"]
+
+                if "Hello" in prompt:
+                    content = (
+                        "Hello! I'm doing well, thank you for asking. "
+                        "How can I help you today?"
+                    )
+                elif "capital of France" in prompt:
+                    content = "The capital of France is Paris."
+                else:
+                    content = (
+                        "The ocean blue stretches far and wide,\n"
+                        "With rolling waves and changing tide.\n"
+                        "A peaceful scene of endless sea,\n"
+                        "Where dolphins play so wild and free."
+                    )
+
+                mock_response = MagicMock()
+                mock_response.read.return_value = json.dumps(
+                    {"choices": [{"message": {"content": content}}]}
+                ).encode("utf-8")
+                mock_response.__enter__.return_value = mock_response
+                mock_response.__exit__.return_value = None
+                return mock_response
+
+            mock_urlopen.side_effect = mock_response_side_effect
+
+            results = self.evaluator.run_evaluation(test_cases, self.client)
+
+            self.assertEqual(len(results), 3, "Should have 3 evaluation results")
+
+            for result in results:
+                self.assertIsNotNone(result["test_name"], "Test name should be present")
+                self.assertIsNotNone(result["prompt"], "Prompt should be present")
+                self.assertIsNotNone(
+                    result["expected_output"], "Expected output should be present"
+                )
+                self.assertIsNotNone(
+                    result["actual_output"], "Actual output should be present"
+                )
+                self.assertIsNone(result["error"], "No errors should occur")
+                self.assertIsNotNone(
+                    result["evaluation_results"], "Evaluation results should be present"
+                )
+
+
+if __name__ == "__main__":
+    unittest.main()

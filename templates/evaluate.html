@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangChain LLM Evaluation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .json-input, .json-output {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .score-excellent { color: #28a745; font-weight: bold; }
+        .score-good { color: #ffc107; font-weight: bold; }
+        .score-poor { color: #dc3545; font-weight: bold; }
+        .evaluation-result {
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .test-case-example {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="mb-4">LangChain LLM Evaluation Interface</h1>
+                <p class="lead">Test your LLM responses against expected outputs using LangChain evaluators.</p>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <h3>Input Test Cases (JSON)</h3>
+                <div class="test-case-example">
+                    <h6>Example Format:</h6>
+                    <pre class="mb-0">{
+  "test_cases": [
+    {
+      "prompt": "Hello, how are you?",
+      "expected_output": "Hello! I'm doing well, thank you for asking. How can I help you today?",
+      "test_name": "greeting"
+    },
+    {
+      "prompt": "What is the capital of France?",
+      "expected_output": "The capital of France is Paris.",
+      "test_name": "factual_qa"
+    },
+    {
+      "prompt": "Write a short poem about the ocean.",
+      "expected_output": "Waves crash upon the sandy shore,\nBlue depths hold secrets and much more.\nThe ocean vast, both calm and wild,\nNature's beauty, unreconciled.",
+      "test_name": "creative_writing"
+    }
+  ]
+}</pre>
+                </div>
+                
+                <form id="evaluationForm">
+                    <div class="mb-3">
+                        <label for="testCasesInput" class="form-label">Test Cases JSON:</label>
+                        <textarea class="form-control json-input" id="testCasesInput" rows="15" placeholder="Enter your test cases in JSON format..."></textarea>
+                        <div class="form-text">Enter test cases with prompts and expected outputs.</div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="evaluateBtn">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        Run Evaluation
+                    </button>
+                    <button type="button" class="btn btn-secondary ms-2" id="loadExampleBtn">Load Example</button>
+                    <button type="button" class="btn btn-outline-secondary ms-2" id="clearBtn">Clear</button>
+                </form>
+            </div>
+
+            <div class="col-md-6">
+                <h3>Evaluation Results</h3>
+                <div id="resultsContainer">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        Results will appear here after running evaluation.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const form = document.getElementById('evaluationForm');
+        const input = document.getElementById('testCasesInput');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const evaluateBtn = document.getElementById('evaluateBtn');
+        const spinner = evaluateBtn.querySelector('.spinner-border');
+        const loadExampleBtn = document.getElementById('loadExampleBtn');
+        const clearBtn = document.getElementById('clearBtn');
+
+        const exampleData = {
+            "test_cases": [
+                {
+                    "prompt": "Hello, how are you?",
+                    "expected_output": "Hello! I'm doing well, thank you for asking. How can I help you today?",
+                    "test_name": "greeting"
+                },
+                {
+                    "prompt": "What is the capital of France?",
+                    "expected_output": "The capital of France is Paris.",
+                    "test_name": "factual_qa"
+                },
+                {
+                    "prompt": "Write a short poem about the ocean.",
+                    "expected_output": "Waves crash upon the sandy shore,\\nBlue depths hold secrets and much more.\\nThe ocean vast, both calm and wild,\\nNature's beauty, unreconciled.",
+                    "test_name": "creative_writing"
+                }
+            ]
+        };
+
+        loadExampleBtn.addEventListener('click', () => {
+            input.value = JSON.stringify(exampleData, null, 2);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            input.value = '';
+            resultsContainer.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle"></i> Results will appear here after running evaluation.</div>';
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            try {
+                const jsonData = JSON.parse(input.value);
+                
+                spinner.classList.remove('d-none');
+                evaluateBtn.disabled = true;
+                
+                const response = await fetch('/evaluate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(jsonData)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    displayResults(result);
+                } else {
+                    displayError(result.detail || 'Evaluation failed');
+                }
+                
+            } catch (error) {
+                if (error instanceof SyntaxError) {
+                    displayError('Invalid JSON format. Please check your input.');
+                } else {
+                    displayError('Error: ' + error.message);
+                }
+            } finally {
+                spinner.classList.add('d-none');
+                evaluateBtn.disabled = false;
+            }
+        });
+
+        function displayResults(data) {
+            let html = `
+                <div class="alert alert-success">
+                    <strong>Evaluation Complete!</strong> Processed ${data.total_tests} test cases.
+                </div>
+            `;
+            
+            data.results.forEach((result, index) => {
+                const hasError = result.error !== null;
+                const evalResults = result.evaluation_results;
+                
+                html += `
+                    <div class="evaluation-result">
+                        <h5>Test Case ${index + 1}: ${result.test_name}</h5>
+                        <p><strong>Prompt:</strong> ${result.prompt}</p>
+                        
+                        ${hasError ? `
+                            <div class="alert alert-danger">
+                                <strong>Error:</strong> ${result.error}
+                            </div>
+                        ` : `
+                            <p><strong>Expected:</strong> ${result.expected_output}</p>
+                            <p><strong>Actual:</strong> ${result.actual_output}</p>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Exact Match</h6>
+                                    <span class="${getScoreClass(evalResults.exact_match_score)}">
+                                        ${evalResults.exact_match ? '✓ Match' : '✗ No Match'} 
+                                        (${evalResults.exact_match_score})
+                                    </span>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>String Distance</h6>
+                                    <span class="${getScoreClass(1 - evalResults.string_distance_score)}">
+                                        ${(evalResults.string_distance_score * 100).toFixed(1)}% distance
+                                        ${evalResults.similarity_threshold_met ? '(✓ Similar)' : '(✗ Different)'}
+                                    </span>
+                                </div>
+                            </div>
+                        `}
+                    </div>
+                `;
+            });
+            
+            resultsContainer.innerHTML = html;
+        }
+
+        function displayError(message) {
+            resultsContainer.innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${message}
+                </div>
+            `;
+        }
+
+        function getScoreClass(score) {
+            if (score >= 0.8) return 'score-excellent';
+            if (score >= 0.5) return 'score-good';
+            return 'score-poor';
+        }
+    </script>
+</body>
+</html>

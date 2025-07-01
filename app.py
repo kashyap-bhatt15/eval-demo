@@ -6,11 +6,23 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+
+from evaluation import EvaluationCase, LLMEvaluator
 
 app = FastAPI(title="eval-demo", version="1.0")
+templates = Jinja2Templates(directory="templates")
+
+
+class EvaluationRequest(BaseModel):
+    """Request model for evaluation endpoint."""
+
+    test_cases: List[Dict[str, str]]
 
 
 @app.get("/")
@@ -110,6 +122,48 @@ def _get_openai_api_key() -> str:
             status_code=500, detail="OPENAI_API_KEY environment variable not set"
         )
     return api_key
+
+
+@app.get("/evaluate-ui", response_class=HTMLResponse)
+def evaluate_ui(request: Request):
+    """Serve the evaluation UI."""
+    return templates.TemplateResponse("evaluate.html", {"request": request})
+
+
+@app.post("/evaluate")
+def evaluate_llm_responses(request: EvaluationRequest) -> Dict[str, Any]:
+    """
+    Evaluate LLM responses against expected outputs.
+
+    Args:
+        request: Evaluation request containing test cases
+
+    Returns:
+        Dictionary containing evaluation results
+    """
+    try:
+        test_cases = []
+        for case_data in request.test_cases:
+            test_cases.append(
+                EvaluationCase(
+                    prompt=case_data["prompt"],
+                    expected_output=case_data["expected_output"],
+                    test_name=case_data.get("test_name", "unnamed_test"),
+                )
+            )
+
+        evaluator = LLMEvaluator()
+
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app)
+
+        results = evaluator.run_evaluation(test_cases, client)
+
+        return {"status": "success", "total_tests": len(test_cases), "results": results}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
 
 
 if __name__ == "__main__":
