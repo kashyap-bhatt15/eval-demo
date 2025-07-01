@@ -2,16 +2,15 @@
 LangChain evaluation module for testing LLM responses.
 """
 
-from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from fastapi import HTTPException
 from langchain.evaluation import EvaluatorType, load_evaluator
+from pydantic import BaseModel
 
 
-@dataclass
-class EvaluationCase:
-    """Data class for evaluation test cases."""
+class EvaluationCase(BaseModel):
+    """Pydantic model for evaluation test cases."""
 
     prompt: str
     expected_output: str
@@ -91,7 +90,20 @@ class LLMEvaluator:
                     continue
 
                 data = response.json()
-                actual_output = data.get("response", "")
+                if "response" not in data:
+                    results.append(
+                        {
+                            "test_name": case.test_name,
+                            "prompt": case.prompt,
+                            "expected_output": case.expected_output,
+                            "actual_output": None,
+                            "error": "LLM API response missing 'response' key",
+                            "evaluation_results": None,
+                        }
+                    )
+                    continue
+
+                actual_output = data["response"]
 
                 evaluation_results = self.evaluate_response(
                     actual_output, case.expected_output

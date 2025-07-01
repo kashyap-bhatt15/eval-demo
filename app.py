@@ -12,10 +12,16 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from evaluation import EvaluationCase, LLMEvaluator
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="eval-demo", version="1.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 templates = Jinja2Templates(directory="templates")
 
 
@@ -131,19 +137,24 @@ def evaluate_ui(request: Request):
 
 
 @app.post("/evaluate")
-def evaluate_llm_responses(request: EvaluationRequest) -> Dict[str, Any]:
+@limiter.limit("10/hour")
+def evaluate_llm_responses(
+    request: Request, evaluation_request: EvaluationRequest
+) -> Dict[str, Any]:
     """
     Evaluate LLM responses against expected outputs.
+    Rate limited to 10 requests per hour per IP address.
 
     Args:
-        request: Evaluation request containing test cases
+        request: FastAPI request object (for rate limiting)
+        evaluation_request: Evaluation request containing test cases
 
     Returns:
         Dictionary containing evaluation results
     """
     try:
         test_cases = []
-        for case_data in request.test_cases:
+        for case_data in evaluation_request.test_cases:
             test_cases.append(
                 EvaluationCase(
                     prompt=case_data["prompt"],
