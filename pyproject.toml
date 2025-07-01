@@ -12,7 +12,6 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.24.0",
     "starlette>=0.46.0",
-    "httpx>=0.28.0",
 ]
 
 [project.optional-dependencies]
