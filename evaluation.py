@@ -76,9 +76,7 @@ class LLMEvaluator:
         for case in test_cases:
             try:
                 response = requests.post(
-                    f"{base_url}/llm",
-                    params={"prompt": case.prompt},
-                    timeout=30
+                    f"{base_url}/llm", params={"prompt": case.prompt}, timeout=30
                 )
 
                 if response.status_code != 200:

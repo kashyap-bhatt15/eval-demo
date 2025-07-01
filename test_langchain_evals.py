@@ -134,6 +134,7 @@ class TestLangChainEvaluations(unittest.TestCase):
         ]
 
         with patch("requests.post") as mock_post:
+
             def mock_post_side_effect(url, **kwargs):
                 if "/llm" in url:
                     prompt = kwargs.get("params", {}).get("prompt", "")
